@@ -1,0 +1,35 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Virtual environment folder
+dfs_env/
+
+# Logs
+logs/
+*.log
+
+# SQLite database files
+database/*.db
+
+# Temporary files and storage
+storage/temp/
+storage/worker_*/
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDE-specific files
+.vscode/
+.idea/
+*.iml
+
+# Python packaging
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Git-specific
+.git/
