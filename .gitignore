@@ -10,11 +10,11 @@ logs/
 *.log
 
 # SQLite database files
-database/*.db
+distributed_file_system/database/*.db
 
 # Temporary files and storage
-storage/temp/
-storage/worker_*/
+distributed_file_system/storage/temp/
+distributed_file_system/storage/worker_*/**
 
 # Operating System files
 .DS_Store
