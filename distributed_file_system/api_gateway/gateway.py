@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
 import os
 import uuid
 import requests
@@ -122,6 +122,73 @@ def worker_heartbeat(worker_id):
         return jsonify({'message': f'Heartbeat relayed for worker {worker_id}'}), response.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({'error': f'Master node communication failed: {str(e)}'}), 500
+
+
+@app.route('/')
+def index():
+    # Get the list of all uploaded files from the database
+    files = db_operations.get_all_files()
+    return render_template('index.html', files=files)
+
+# Route to handle file upload through the UI
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    file = request.files.get('file')
+    if not file:
+        return redirect(url_for('index'))
+
+    # Upload the file to the existing API endpoint
+    files = {'file': file}
+    response = requests.post(f"http://127.0.0.1:5000/files", files=files)
+
+    # After uploading, redirect to the home page
+    return redirect(url_for('index'))
+
+@app.route('/files/<file_id>/download', methods=['GET'])
+def download_file(file_id):
+    """
+    Reassembles and downloads the full file by retrieving its chunks from worker nodes.
+    """
+    # Step 1: Get metadata for the specified file
+    file_metadata = db_operations.get_file(file_id)
+    if not file_metadata:
+        return jsonify({'error': 'File not found'}), 404
+
+    # Step 2: Use the correct global path for 'storage/temp'
+    base_storage_path = os.path.abspath(os.path.join(os.getcwd(), '..', 'storage'))
+    output_dir = os.path.join(base_storage_path, 'temp')
+    os.makedirs(output_dir, exist_ok=True)
+    output_file_path = os.path.join(output_dir, f"{file_id}_reconstructed.txt")
+
+    # Step 3: Retrieve each chunk and reassemble
+    with open(output_file_path, 'wb') as output_file:
+        for chunk in file_metadata['chunks']:
+            chunk_id = chunk['chunk_id']
+            worker_id = chunk['worker_ids'][0]  # Use the first worker for simplicity
+            worker_port = {
+                "worker_1": 5002,
+                "worker_2": 5003,
+                "worker_3": 5004,
+                "worker_4": 5005,
+                "worker_5": 5006
+            }.get(worker_id)
+
+            # Fetch the chunk from the worker node
+            chunk_url = f"http://127.0.0.1:{worker_port}/chunks/{chunk_id}"
+            try:
+                chunk_response = requests.get(chunk_url)
+                chunk_response.raise_for_status()  # Check for request errors
+
+                # Write the chunk data to the output file
+                output_file.write(chunk_response.content)
+
+            except requests.exceptions.RequestException as e:
+                print(f"Error fetching chunk {chunk_id} from {worker_id}: {e}")
+                return jsonify({'error': f'Failed to retrieve chunk {chunk_id}'}), 500
+
+    # Step 4: Send the reassembled file to the client
+    return send_file(output_file_path, as_attachment=True, download_name=file_metadata['name'])
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

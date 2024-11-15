@@ -56,7 +56,6 @@ def store_chunk(chunk_id):
 
 # API: Retrieve a Chunk
 @app.route('/chunks/<chunk_id>', methods=['GET'])
-@app.route('/chunks/<chunk_id>', methods=['GET'])
 def retrieve_chunk(chunk_id):
     """
     Retrieves a chunk by its ID.
