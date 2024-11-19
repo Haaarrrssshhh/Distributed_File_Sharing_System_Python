@@ -60,11 +60,19 @@ def retrieve_chunk(chunk_id):
     """
     Retrieves a chunk by its ID.
     """
-    chunk_path = os.path.join(STORAGE_DIR, chunk_id)
+    # Get absolute path of the chunk
+    chunk_path = os.path.abspath(os.path.join(STORAGE_DIR, chunk_id))
+    print(f"DEBUG: Looking for chunk at {chunk_path}")
+    
     if not os.path.exists(chunk_path):
+        print(f"DEBUG: Chunk {chunk_id} not found at {chunk_path}")
         return jsonify({'error': 'Chunk not found'}), 404
 
-    return send_file(chunk_path, as_attachment=True)
+    try:
+        return send_file(chunk_path, as_attachment=True)
+    except Exception as e:
+        print(f"ERROR: Failed to send chunk {chunk_id}: {e}")
+        return jsonify({'error': f'Failed to retrieve chunk: {str(e)}'}), 500
 
 if __name__ == '__main__':
     # Start Heartbeat Thread

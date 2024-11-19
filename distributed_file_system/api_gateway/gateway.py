@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template, redirect, url_for, send_file
 import os
 import uuid
 import requests
 from shared.utils import log_api_call, divide_file_into_chunks
 from database import db_operations
+import hashlib
 
 app = Flask(__name__)
 
@@ -19,6 +20,22 @@ WORKER_STORAGE_PATHS = {
 
 # Initialize the SQLite database
 db_operations.init_db()
+
+def calculate_file_hash(file_path):
+    """
+    Calculate the SHA256 hash of a file.
+
+    Args:
+        file_path (str): Path to the file.
+
+    Returns:
+        str: SHA256 hash of the file.
+    """
+    hash_sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_sha256.update(chunk)
+    return hash_sha256.hexdigest()
 
 # Create API: Upload a file and divide it into chunks
 @app.route('/files', methods=['POST'])
@@ -40,6 +57,10 @@ def create_file():
 
     # Store metadata in SQLite
     db_operations.add_file_record(file_id, file_name, chunks_info)
+
+    # Log chunk replication for debugging
+    for chunk in chunks_info:
+        print(f"DEBUG: Chunk {chunk['chunk_id']} is replicated across workers: {chunk['worker_ids']}")
 
     # Send metadata to the Master Node
     try:
@@ -122,6 +143,88 @@ def worker_heartbeat(worker_id):
         return jsonify({'message': f'Heartbeat relayed for worker {worker_id}'}), response.status_code
     except requests.exceptions.RequestException as e:
         return jsonify({'error': f'Master node communication failed: {str(e)}'}), 500
+
+
+@app.route('/')
+def index():
+    # Get the list of all uploaded files from the database
+    files = db_operations.get_all_files()
+    return render_template('index.html', files=files)
+
+# Route to handle file upload through the UI
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    file = request.files.get('file')
+    if not file:
+        return redirect(url_for('index'))
+
+    # Save file temporarily to calculate its hash
+    temp_path = os.path.join('storage', 'temp', file.filename)
+    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+
+    try:
+        file.save(temp_path)
+        original_file_hash = calculate_file_hash(temp_path)
+
+        with open(temp_path, 'rb') as temp_file:
+            files = {'file': temp_file}
+            response = requests.post(f"http://127.0.0.1:5000/files", files=files)
+
+        if response.status_code == 201:
+            print(f"DEBUG: File uploaded successfully: {response.json()}")
+        else:
+            print(f"ERROR: Upload failed: {response.text}")
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+    return redirect(url_for('index'))
+
+@app.route('/files/<file_id>/download', methods=['GET'])
+def download_file(file_id):
+    """
+    Reassembles and downloads the full file by retrieving its chunks from worker nodes.
+    """
+    file_metadata = db_operations.get_file(file_id)
+    if not file_metadata:
+        return jsonify({'error': 'File not found'}), 404
+
+    output_dir = os.path.abspath(os.path.join('storage', 'temp'))
+    os.makedirs(output_dir, exist_ok=True)
+    output_file_path = os.path.join(output_dir, f"{file_id}_reconstructed.txt")
+
+    try:
+        with open(output_file_path, 'wb') as output_file:
+            for chunk in file_metadata['chunks']:
+                chunk_id = chunk['chunk_id']
+                chunk_retrieved = False
+                for worker_id in chunk['worker_ids']:
+                    worker_port = {
+                        "worker_1": 5002,
+                        "worker_2": 5003,
+                        "worker_3": 5004,
+                        "worker_4": 5005,
+                        "worker_5": 5006
+                    }.get(worker_id)
+
+                    chunk_url = f"http://127.0.0.1:{worker_port}/chunks/{chunk_id}"
+                    try:
+                        chunk_response = requests.get(chunk_url)
+                        chunk_response.raise_for_status()
+                        output_file.write(chunk_response.content)
+                        chunk_retrieved = True
+                        print(f"Chunk retrived {chunk_id} from worker {worker_id}")
+                        break
+                    except requests.exceptions.RequestException as e:
+                        print(f"ERROR: Failed to fetch chunk {chunk_id} from worker {worker_id}: {e}")
+
+                if not chunk_retrieved:
+                    print(f"ERROR: Could not retrieve chunk {chunk_id} from any worker.")
+                    return jsonify({'error': f'Failed to retrieve chunk {chunk_id}'}), 500
+    except Exception as e:
+        return jsonify({'error': f'Failed to reconstruct file: {e}'}), 500
+
+    return send_file(output_file_path, as_attachment=True, download_name=file_metadata['name'])
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
