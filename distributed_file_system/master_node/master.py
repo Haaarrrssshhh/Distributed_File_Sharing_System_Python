@@ -44,56 +44,85 @@ def init_db():
     conn.commit()
     conn.close()
 
-@app.route('/metadata', methods=['POST'])
-def update_metadata():
+@app.route('/workers/active', methods=['GET'])
+def get_active_workers():
     """
-    Update metadata when a new file is created or modified.
+    Retrieve the list of active workers based on their last heartbeat.
     """
-    data = request.json
-    file_id = data.get('file_id')
-    file_name = data.get('file_name')
-    chunks = json.dumps(data.get('chunks'))  # Convert list to JSON
-    created_at = datetime.now().isoformat()
-
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     cursor.execute('''
-        INSERT OR REPLACE INTO metadata (file_id, file_name, chunks, created_at)
-        VALUES (?, ?, ?, ?)
-    ''', (file_id, file_name, chunks, created_at))
-
-    conn.commit()
+        SELECT worker_id FROM workers
+        WHERE status = 'active'
+    ''')
+    rows = cursor.fetchall()
     conn.close()
 
-    return jsonify({'message': f'Metadata for file {file_id} updated successfully'}), 200
+    return jsonify({'active_workers': [row[0] for row in rows]}), 200
 
-@app.route('/metadata/<file_id>', methods=['GET'])
-def get_metadata(file_id):
+@app.route('/chunks/<file_id>/<chunk_id>', methods=['GET'])
+def get_chunk_worker(file_id, chunk_id):
     """
-    Retrieve metadata for a specific file by file ID.
+    Return the worker URL storing a specific chunk.
     """
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
-    cursor.execute('''
-        SELECT file_id, file_name, chunks, created_at, updated_at
-        FROM metadata
-        WHERE file_id = ?
-    ''', (file_id,))
+    # Fetch file metadata
+    cursor.execute('SELECT chunks FROM metadata WHERE file_id = ?', (file_id,))
     row = cursor.fetchone()
     conn.close()
 
     if not row:
         return jsonify({'error': 'File not found'}), 404
 
-    return jsonify({
-        'file_id': row[0],
-        'file_name': row[1],
-        'chunks': json.loads(row[2]),
-        'created_at': row[3],
-        'updated_at': row[4],
-    }), 200
+    chunks = json.loads(row[0])
+    for chunk in chunks:
+        if chunk['chunk_id'] == chunk_id:
+            for worker_id in chunk['worker_ids']:
+                # Check if the worker is active
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute('SELECT status FROM workers WHERE worker_id = ?', (worker_id,))
+                worker_row = cursor.fetchone()
+                conn.close()
+
+                if worker_row and worker_row[0] == 'active':
+                    port = {
+                        "worker_1": 5002,
+                        "worker_2": 5003,
+                        "worker_3": 5004,
+                        "worker_4": 5005,
+                        "worker_5": 5006,
+                    }.get(worker_id)
+                    if port:
+                        return jsonify({'worker_url': f"http://127.0.0.1:{port}/chunks/{chunk_id}"}), 200
+
+    return jsonify({'error': 'No active workers for chunk'}), 500
+
+@app.route('/metadata', methods=['POST'])
+def update_metadata():
+    data = request.json
+    file_id = data.get('file_id')
+    file_name = data.get('file_name')
+    chunks = json.dumps(data.get('chunks'))  # Convert list to JSON
+    created_at = datetime.now().isoformat()
+
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO metadata (file_id, file_name, chunks, created_at)
+            VALUES (?, ?, ?, ?)
+        ''', (file_id, file_name, chunks, created_at))
+        conn.commit()
+        conn.close()
+        print(f"DEBUG: Metadata for file {file_id} updated successfully.")
+        return jsonify({'message': f'Metadata for file {file_id} updated successfully'}), 200
+    except Exception as e:
+        print(f"ERROR: Failed to update metadata: {e}")
+        return jsonify({'error': 'Failed to update metadata'}), 500
 
 @app.route('/heartbeat/<worker_id>', methods=['POST'])
 def worker_heartbeat(worker_id):
@@ -124,25 +153,6 @@ def worker_heartbeat(worker_id):
 
     return jsonify({'message': f'Heartbeat received from {worker_id}'}), 200
 
-@app.route('/workers', methods=['GET'])
-def get_workers():
-    """
-    Retrieve the status of all worker nodes.
-    """
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT worker_id, status, last_heartbeat FROM workers')
-    rows = cursor.fetchall()
-    conn.close()
-
-    workers = [
-        {'worker_id': row[0], 'status': row[1], 'last_heartbeat': row[2]}
-        for row in rows
-    ]
-
-    return jsonify(workers), 200
-
 def monitor_workers():
     """
     Monitor worker nodes' heartbeat and update their status.
@@ -171,6 +181,5 @@ def monitor_workers():
 
 if __name__ == '__main__':
     init_db()
-    # Start worker monitoring in a separate thread
     threading.Thread(target=monitor_workers, daemon=True).start()
     app.run(debug=True, port=5001)
