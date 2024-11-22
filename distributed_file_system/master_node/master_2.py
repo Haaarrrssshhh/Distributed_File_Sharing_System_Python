@@ -9,7 +9,7 @@ import requests
 app = Flask(__name__)
 
 # Master Node Configuration
-MASTER_NODE_ID = "master_1"  # Unique ID for this Master Node
+MASTER_NODE_ID = "master_2"  # Unique ID for this Master Node
 WORKER_NODES = ["worker_1", "worker_2", "worker_3", "worker_4", "worker_5"]  # Backup nodes
 HEARTBEAT_INTERVAL = 10  # Seconds to check if current leader is alive
 BACKUP_MASTERS = ["master_1", "master_2", "master_3"] 
@@ -51,6 +51,8 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+# Election logic: Bully Algorithm
 
 def start_election():
     global current_leader
@@ -227,6 +229,9 @@ def update_metadata():
         ''', (file_id, file_name, chunks, created_at))
         conn.commit()
         conn.close()
+        if current_leader == MASTER_NODE_ID:
+        # If I am the leader, sync metadata to other masters
+            sync_metadata_across_masters(data)
         print(f"DEBUG: Metadata for file {file_id} updated successfully.")
         return jsonify({'message': f'Metadata for file {file_id} updated successfully'}), 200
     except Exception as e:
@@ -317,21 +322,6 @@ def leader_announcement():
     print(f"{MASTER_NODE_ID}: New leader announced: {current_leader}")
     return jsonify({'status': 'ok'}), 200
 
-def sync_metadata_across_masters(metadata):
-    """
-    Sync metadata to all backup masters after a chunk is uploaded.
-    """
-    for master in BACKUP_MASTERS:
-        if master != MASTER_NODE_ID:
-            try:
-                response = requests.post(f"http://127.0.0.1:{get_leader_port(master)}/sync_metadata", json=metadata, timeout=2)
-                if response.status_code == 200:
-                    print(f"Metadata synced with {master}")
-                else:
-                    print(f"Failed to sync with {master}")
-            except requests.exceptions.RequestException as e:
-                print(f"Error syncing metadata with {master}: {e}")
-                
 failed_syncs = {}  # Dictionary to keep track of failed syncs
 
 def sync_metadata_across_masters(metadata):
@@ -355,7 +345,7 @@ def sync_metadata_across_masters(metadata):
                 print(f"Error syncing metadata with {master}: {e}")
                 failed_syncs[master] = metadata  # Save failed sync
 
-                
+
 @app.route('/sync_metadata', methods=['POST'])
 def sync_metadata():
     data = request.json
@@ -385,4 +375,4 @@ if __name__ == '__main__':
     heartbeat_thread.start()  # Start heartbeat thread
     worker_monitor_thread = threading.Thread(target=monitor_workers, daemon=True)
     worker_monitor_thread.start()  # Start worker monitoring thread
-    app.run(debug=True, port=5001, use_reloader=False) 
+    app.run(debug=True, port=5101, use_reloader=False) 
