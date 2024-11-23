@@ -10,7 +10,6 @@ app = Flask(__name__)
 
 # Master Node Configuration
 MASTER_NODE_ID = "master_2"  # Unique ID for this Master Node
-WORKER_NODES = ["worker_1", "worker_2", "worker_3", "worker_4", "worker_5"]  # Backup nodes
 HEARTBEAT_INTERVAL = 10  # Seconds to check if current leader is alive
 BACKUP_MASTERS = ["master_1", "master_2", "master_3"] 
 # New variable to track the current leader
@@ -229,9 +228,7 @@ def update_metadata():
         ''', (file_id, file_name, chunks, created_at))
         conn.commit()
         conn.close()
-        if current_leader == MASTER_NODE_ID:
-        # If I am the leader, sync metadata to other masters
-            sync_metadata_across_masters(data)
+        sync_metadata_across_masters(data)
         print(f"DEBUG: Metadata for file {file_id} updated successfully.")
         return jsonify({'message': f'Metadata for file {file_id} updated successfully'}), 200
     except Exception as e:

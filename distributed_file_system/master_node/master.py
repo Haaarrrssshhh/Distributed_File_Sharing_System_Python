@@ -10,10 +10,8 @@ app = Flask(__name__)
 
 # Master Node Configuration
 MASTER_NODE_ID = "master_1"  # Unique ID for this Master Node
-WORKER_NODES = ["worker_1", "worker_2", "worker_3", "worker_4", "worker_5"]  # Backup nodes
 HEARTBEAT_INTERVAL = 10  # Seconds to check if current leader is alive
 BACKUP_MASTERS = ["master_1", "master_2", "master_3"] 
-# New variable to track the current leader
 current_leader = None
 # Database file
 DB_FILE = os.path.join('database', 'master_metadata.db')
@@ -227,6 +225,7 @@ def update_metadata():
         ''', (file_id, file_name, chunks, created_at))
         conn.commit()
         conn.close()
+        sync_metadata_across_masters(data)
         print(f"DEBUG: Metadata for file {file_id} updated successfully.")
         return jsonify({'message': f'Metadata for file {file_id} updated successfully'}), 200
     except Exception as e:
@@ -316,23 +315,6 @@ def leader_announcement():
     current_leader = leader
     print(f"{MASTER_NODE_ID}: New leader announced: {current_leader}")
     return jsonify({'status': 'ok'}), 200
-
-def sync_metadata_across_masters(metadata):
-    """
-    Sync metadata to all backup masters after a chunk is uploaded.
-    """
-    for master in BACKUP_MASTERS:
-        if master != MASTER_NODE_ID:
-            try:
-                response = requests.post(f"http://127.0.0.1:{get_leader_port(master)}/sync_metadata", json=metadata, timeout=2)
-                if response.status_code == 200:
-                    print(f"Metadata synced with {master}")
-                else:
-                    print(f"Failed to sync with {master}")
-            except requests.exceptions.RequestException as e:
-                print(f"Error syncing metadata with {master}: {e}")
-                
-failed_syncs = {}  # Dictionary to keep track of failed syncs
 
 def sync_metadata_across_masters(metadata):
     global failed_syncs
