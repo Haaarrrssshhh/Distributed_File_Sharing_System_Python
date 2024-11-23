@@ -10,32 +10,67 @@ app = Flask(__name__)
 # Worker Node Configuration
 WORKER_ID = "worker_1"  # Change for each worker instance
 STORAGE_DIR = f"storage/{WORKER_ID}"
-MASTER_NODE_URL = "http://127.0.0.1:5001"  # Update if Master Node runs on a different host/port
 HEARTBEAT_INTERVAL = 10  # In seconds
+MASTER_NODES = ["master_1", "master_2", "master_3"]  # List of Master Nodes to query for leader information
+MASTER_NODE_URL = ""  # This will be dynamically updated
+LEADER_CHECK_INTERVAL = 30  # How often to check for the leader (in seconds)
 
 # Ensure storage directory exists
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
+def get_current_leader():
+    """
+    This function queries the Master Nodes to get the current leader's port.
+    """
+    global MASTER_NODE_URL
+
+    for master in MASTER_NODES:
+        try:
+            # Query any master to get the current leader
+            response = requests.get(f"http://127.0.0.1:{get_master_port(master)}/current_leader")
+            if response.status_code == 200:
+                leader = response.json().get('leader')  # This should return the leader's ID
+                MASTER_NODE_URL = f"http://127.0.0.1:{get_master_port(leader)}"
+                print(f"Current leader is: {leader}")
+                return MASTER_NODE_URL
+        except requests.exceptions.RequestException as e:
+            print(f"Error querying {master}: {e}")
+
+    return None  # If no leader is found or no master responds
+
+def get_master_port(master):
+    """
+    Helper function to map Master node to a port.
+    """
+    ports = {
+        "master_1": 5001,
+        "master_2": 5101,
+        "master_3": 5201
+    }
+    return ports.get(master, 5001)
+
 # Heartbeat to Master Node
 def send_heartbeat():
     """
-    Sends periodic heartbeats to the Master Node.
+    Periodically sends heartbeats to the current leader.
     """
     while True:
-        try:
-            # Send heartbeat request
-            response = requests.post(f"{MASTER_NODE_URL}/heartbeat/{WORKER_ID}")
-            
-            # Debugging the exact response status and content
-            print(f"DEBUG: Status Code: {response.status_code}, Response Body: {response.text}")
-            
-            if response.status_code == 200:
-                print(f"[{datetime.now()}] Heartbeat sent successfully: {response.text}")
-            else:
-                print(f"[{datetime.now()}] Heartbeat failed with status code: {response.status_code}, response: {response.text}")
-        except requests.exceptions.RequestException as e:
-            # Catch network or request-related exceptions
-            print(f"[{datetime.now()}] Heartbeat failed: {str(e)}")
+        # Get the current leader dynamically
+        leader_url = get_current_leader()
+        if leader_url:
+            try:
+                # Send heartbeat to the leader
+                response = requests.post(f"{leader_url}/heartbeat/{WORKER_ID}")
+                print(f"DEBUG: Status Code: {response.status_code}, Response Body: {response.text}")
+                if response.status_code == 200:
+                    print(f"[{datetime.now()}] Heartbeat sent successfully: {response.text}")
+                else:
+                    print(f"[{datetime.now()}] Heartbeat failed with status code: {response.status_code}, response: {response.text}")
+            except requests.exceptions.RequestException as e:
+                print(f"Error sending heartbeat to {leader_url}: {e}")
+        else:
+            print("No leader found. Retrying...")
+        
         time.sleep(HEARTBEAT_INTERVAL)
 
 # API: Store a Chunk

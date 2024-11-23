@@ -9,7 +9,7 @@ import hashlib
 app = Flask(__name__)
 
 # Master Node URL (update if needed)
-MASTER_NODE_URL = "http://127.0.0.1:5001"
+MASTER_NODE_URL = ""
 WORKER_STORAGE_PATHS = {
     "worker_1": "storage/worker_1",
     "worker_2": "storage/worker_2",
@@ -20,6 +20,30 @@ WORKER_STORAGE_PATHS = {
 
 # Initialize the SQLite database
 db_operations.init_db()
+
+def get_current_leader_url():
+    master_ports = {
+        "master_1": 5001,
+        "master_2": 5101,
+        "master_3": 5201
+    }
+
+    for master, port in master_ports.items():
+        try:
+            print(f"Querying {master} at port {port} for leader...")
+            response = requests.get(f"http://127.0.0.1:{port}/current_leader", timeout=2)
+            if response.status_code == 200:
+                leader = response.json().get("leader")
+                print(f"Leader discovered from {master}: {leader}")
+                if leader:
+                    leader_port = master_ports.get(leader)
+                    if leader_port:
+                        print(f"Returning leader URL: http://127.0.0.1:{leader_port}")
+                        return f"http://127.0.0.1:{leader_port}"
+        except requests.exceptions.RequestException as e:
+            print(f"Error querying {master}: {e}")
+
+    raise Exception("No leader could be discovered among master nodes.")
 
 def calculate_file_hash(file_path):
     """
@@ -57,14 +81,16 @@ def create_file():
 
     # Send metadata to the Master Node
     try:
+        leader_url = get_current_leader_url()
         metadata_response = requests.post(
-            f"{MASTER_NODE_URL}/metadata",
+            f"{leader_url}/metadata",
             json={"file_id": file_id, "file_name": file_name, "chunks": chunks_info}
         )
-        metadata_response.raise_for_status()  # Ensure failure is detected
+        metadata_response.raise_for_status()
     except requests.exceptions.RequestException as e:
         print(f"ERROR: Failed to update master node metadata: {e}")
         return jsonify({'error': 'Master node communication failed. Upload aborted.'}), 500
+
 
     # Store metadata in SQLite
     db_operations.add_file_record(file_id, file_name, chunks_info)
@@ -118,8 +144,9 @@ def delete_file(file_id):
 
     # Inform the Master Node about the deletion
     try:
+        leader_url = get_current_leader_url()
         metadata_response = requests.post(
-            f"{MASTER_NODE_URL}/metadata",
+            f"{leader_url}/metadata",
             json={"file_id": file_id, "file_name": file_info['name'], "chunks": []}
         )
         if metadata_response.status_code != 200:
@@ -188,26 +215,28 @@ def download_file(file_id):
     output_file_path = os.path.join(output_dir, f"{file_id}_reconstructed.txt")
 
     try:
+        leader_url = get_current_leader_url()
         with open(output_file_path, 'wb') as output_file:
             for chunk in file_metadata['chunks']:
                 chunk_id = chunk['chunk_id']
 
-                # Query master node for worker URL
-                try:
-                    worker_response = requests.get(f"{MASTER_NODE_URL}/chunks/{file_id}/{chunk_id}")
-                    worker_response.raise_for_status()
-                    worker_url = worker_response.json().get('worker_url')
-                    if not worker_url:
-                        return jsonify({'error': f'No active worker for chunk {chunk_id}'}), 500
+            # Query master node for worker URL
+            try:
+                worker_response = requests.get(f"{leader_url}/chunks/{file_id}/{chunk_id}")
+                worker_response.raise_for_status()
+                worker_url = worker_response.json().get('worker_url')
+                if not worker_url:
+                    return jsonify({'error': f'No active worker for chunk {chunk_id}'}), 500
 
-                    # Fetch chunk data from worker
-                    chunk_response = requests.get(worker_url)
-                    chunk_response.raise_for_status()
-                    output_file.write(chunk_response.content)
-                except requests.exceptions.RequestException as e:
-                    return jsonify({'error': f'Failed to retrieve chunk {chunk_id}: {str(e)}'}), 500
+                # Fetch chunk data from worker
+                chunk_response = requests.get(worker_url)
+                chunk_response.raise_for_status()
+                output_file.write(chunk_response.content)
+            except requests.exceptions.RequestException as e:
+                return jsonify({'error': f'Failed to retrieve chunk {chunk_id}: {str(e)}'}), 500
     except Exception as e:
         return jsonify({'error': f'Failed to reconstruct file: {str(e)}'}), 500
+
 
     return send_file(output_file_path, as_attachment=True, download_name=file_metadata['name'])
 
