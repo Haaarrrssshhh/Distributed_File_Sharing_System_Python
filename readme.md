@@ -70,6 +70,11 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
     -The system will automatically create dfs_metadata.db and master_metadata.db on startup.
 ```
 
+5. **Update config.json**:
+```bash
+    -Make sure the config.json file contains the ports for all master nodes
+```
+
 
 ## Usage
 
@@ -77,7 +82,6 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 
 1. **Start the Master Node**:
 ```bash
-    python3 distributed_file_system/master_node/master.py
     python3 distributed_file_system/api_gateway/gateway.py
     python3 distributed_file_system/storage/worker_1/worker1.py
     python3 distributed_file_system/storage/worker_2/worker2.py
