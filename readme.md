@@ -61,7 +61,7 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 
 3. **Install Dependencies**:
 ```bash
-    pip install flask
+    pip install -r requirements.txt
 ```
 
 4. **Initialize the Database**:

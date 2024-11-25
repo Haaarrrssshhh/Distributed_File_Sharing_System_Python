@@ -33,3 +33,6 @@ build/
 
 # Git-specific
 .git/
+
+#ignore .env file
+.env

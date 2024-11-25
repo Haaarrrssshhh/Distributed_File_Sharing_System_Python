@@ -1,0 +1,5 @@
+flask==2.3.2          # For the API Gateway and other Flask-based services
+pymongo==4.6.0        # For MongoDB interactions
+python-dotenv==1.0.1  # For loading environment variables from .env files
+requests==2.31.0      # For HTTP requests to other nodes
+
