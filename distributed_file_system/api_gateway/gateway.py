@@ -137,7 +137,6 @@ def delete_file_post(file_id):
             if os.path.exists(chunk_path):
                 os.remove(chunk_path)
 
-    # Redirect back to the index page
     return redirect(url_for('index'))
 
 # Delete API: Mark file as soft deleted and remove chunks
