@@ -23,7 +23,6 @@
             padding: 8px;
         }
 
-        /* Highlight rows on hover */
         tbody tr:hover {
             background-color: #f5f5f5;
         }
@@ -45,7 +44,6 @@
             border: none;
         }
 
-        /* Download button */
         .download-button {
             background-color: #4CAF50; /* Green */
         }
@@ -56,9 +54,9 @@
             cursor: not-allowed;
         }
 
-        /* Delete button (styled like download) */
         .delete-button {
-            background-color: #4CAF50; /* Green, same as download */
+            background-color: #f44336; /* Red */
+            margin-left: 10px; /* Add gap between buttons */
         }
 
         .delete-button.disabled {
@@ -66,10 +64,61 @@
             color: #ddd;
             cursor: not-allowed;
         }
+
+        /* Styling for collapsible chunks */
+        .chunk-container {
+            margin-bottom: 10px;
+        }
+
+        .chunk-title {
+            cursor: pointer;
+            color: #0e0f10;
+        }
+
+        .chunk-arrow {
+            margin-left: 5px;
+            font-size: 12px;
+            vertical-align: middle;
+        }
+
+        .chunk-content {
+            display: none;
+            margin-left: 20px; /* Indent worker nodes under chunk */
+            margin-top: 5px;
+        }
+
+        .chunk-content.visible {
+            display: block;
+        }
+
+        /* Styling for messages */
+        .message {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .message.success {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .message.error {
+            background-color: #f44336;
+            color: white;
+        }
     </style>
 </head>
 <body>
     <h1>Distributed File System</h1>
+
+    <!-- Display messages -->
+    {% if message %}
+        <div class="message {{ message.type }}">
+            {{ message.text }}
+        </div>
+    {% endif %}
 
     <h2>Upload a File</h2>
     <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
@@ -83,9 +132,8 @@
             <tr>
                 <th>Index</th>
                 <th>File Name</th>
-                <th>Size</th>
                 <th>Upload Date</th>
-                <th>Worker Nodes</th>
+                <th>Chunks</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -94,13 +142,20 @@
                 <tr class="{{ 'deleted-row' if file.deleted_at else '' }}">
                     <td>{{ loop.index }}</td>
                     <td>{{ file.name }}</td>
-                    <td>{{ file.size }}</td>
                     <td>{{ file.created_at }}</td>
                     <td>
                         {% for chunk in file.chunks %}
-                            {% for worker_id in chunk.worker_ids %}
-                                {{ worker_id }}{% if not loop.last %}, {% endif %}
-                            {% endfor %}
+                            <div class="chunk-container">
+                                <span class="chunk-title" onclick="toggleChunk(this)">
+                                    Chunk {{ loop.index }}
+                                    <span class="chunk-arrow">▼</span>
+                                </span>
+                                <div class="chunk-content">
+                                    {% for worker_id in chunk.worker_ids %}
+                                        <div>Worker: {{ worker_id }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         {% endfor %}
                     </td>
                     <td>
@@ -121,5 +176,19 @@
             {% endfor %}
         </tbody>
     </table>
+
+    <script>
+        function toggleChunk(element) {
+            const content = element.nextElementSibling; // Get the next sibling (the chunk content div)
+            const arrow = element.querySelector('.chunk-arrow');
+            if (content.classList.contains('visible')) {
+                content.classList.remove('visible');
+                arrow.textContent = '▼'; // Change to downward arrow
+            } else {
+                content.classList.add('visible');
+                arrow.textContent = '▲'; // Change to upward arrow
+            }
+        }
+    </script>
 </body>
 </html>
