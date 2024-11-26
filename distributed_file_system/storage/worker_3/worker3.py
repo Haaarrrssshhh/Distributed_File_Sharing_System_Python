@@ -14,12 +14,12 @@ app = Flask(__name__)
 
 # Worker Configuration
 WORKER_ID = "worker_3"  # Change this for each worker instance
-PORT = os.getenv("MASTER_3_PORT")  # Change this for each worker instance
+PORT = os.getenv("WORKER_3_PORT")  # Change this for each worker instance
 STORAGE_DIR = os.path.abspath(f"storage/{WORKER_ID}")
 
 # Get Worker IP - For EC2 instances, you can get the public IP dynamically
 # For local testing, set WORKER_IP to '127.0.0.1'
-WORKER_IP = os.getenv("MASTER_3_IP")
+WORKER_IP = os.getenv("WORKER_3_IP")
 
 # Master Node Configuration
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config.json')
