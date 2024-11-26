@@ -87,6 +87,11 @@ def send_heartbeat():
 
         time.sleep(HEARTBEAT_INTERVAL)
 
+
+@app.route('/health',methods = ['GET'])
+def health():
+    return jsonify({'status': 'ok'}), 200
+
 @app.route('/chunks/<chunk_id>', methods=['POST'])
 def store_chunk(chunk_id):
     """

@@ -76,6 +76,11 @@ def announce_leader():
         except requests.exceptions.RequestException as e:
             print(f"{MASTER_NODE_ID}: Error announcing leader to {node}: {e}")
 
+
+@app.route('/health',methods = ['GET'])
+def health():
+    return jsonify({'status': 'ok'}), 200
+
 @app.route('/leader', methods=['POST'])
 def leader_announcement():
     """
