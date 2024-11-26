@@ -2,11 +2,14 @@ import os
 import logging
 import math
 import json
+import sqlite3
 from datetime import datetime
 import random
+import requests
 
 # Logger setup
 LOG_FILE = 'logs/api_gateway.log'
+
 
 if not os.path.exists('logs'):
     os.makedirs('logs')
@@ -50,48 +53,38 @@ def log_api_call(action, file_id, details):
 
 
 # Function to divide a file into chunks and store in worker directories
-def divide_file_into_chunks(file_path, file_id, chunk_size_mb=128, replication_factor=3):
-    """
-    Divides a file into chunks and stores them in worker directories.
-
-    Args:
-        file_path (str): Path to the file to be divided.
-        file_id (str): ID of the file being divided.
-        chunk_size_mb (int): Size of each chunk in MB.
-        replication_factor (int): Number of copies for each chunk.
-
-    Returns:
-        list: Metadata about the chunks (chunk ID, size, worker IDs).
-    """
-    chunk_size = chunk_size_mb * 1024 * 1024  # Convert MB to bytes
+def divide_file_into_chunks(file_path, file_id, master_node_id,chunk_size_mb=2, replication_factor=3):
+    DB_FILE = f"database/{master_node_id}_metadata.db"
+    chunk_size = chunk_size_mb * 1024 * 1024
     file_size = os.path.getsize(file_path)
     num_chunks = math.ceil(file_size / chunk_size)
     chunks_info = []
 
-    # Read file and divide into chunks
+    # Fetch active workers
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('SELECT worker_id FROM workers WHERE status = "active"')
+    active_workers = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    if len(active_workers) < replication_factor:
+        raise Exception("Not enough active workers to replicate chunks")
+
     with open(file_path, 'rb') as file:
         for i in range(num_chunks):
-            start = i * chunk_size
-            file.seek(start)
             chunk_data = file.read(chunk_size)
-
-            # Generate chunk ID
             chunk_id = f"{file_id}_chunk_{i+1}"
+            assigned_workers = random.sample(active_workers, replication_factor)
 
-            # Select worker nodes for replication
-            assigned_workers = random.sample(list(WORKER_STORAGE_PATHS.keys()), replication_factor)
-
-            # Store chunk in each assigned worker directory
             for worker_id in assigned_workers:
-                worker_path = os.path.join(WORKER_STORAGE_PATHS[worker_id], chunk_id)
-                with open(worker_path, 'wb') as chunk_file:
-                    chunk_file.write(chunk_data)
+                try:
+                    worker_url = f"http://127.0.0.1:{get_worker_port(worker_id)}/chunks/{chunk_id}"
+                    response = requests.post(worker_url, data=chunk_data)
+                    response.raise_for_status()
+                except requests.exceptions.RequestException as e:
+                    raise Exception(f"Failed to store chunk {chunk_id} on worker {worker_id}: {e}")
 
-            # Add chunk metadata
-            chunks_info.append({
-                'chunk_id': chunk_id,
-                'size': len(chunk_data),
-                'worker_ids': assigned_workers
-            })
+            chunks_info.append({'chunk_id': chunk_id, 'size': len(chunk_data), 'worker_ids': assigned_workers})
 
     return chunks_info
+

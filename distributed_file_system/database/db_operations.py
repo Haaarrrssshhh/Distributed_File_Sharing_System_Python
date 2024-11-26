@@ -1,161 +1,111 @@
-import sqlite3
-import os
-import threading
-import json
-from datetime import datetime
+from database.connection import get_database
+from datetime import datetime, timedelta
 
-# Database file location
-DB_FILE = 'database/dfs_metadata.db'
+# Get the database instance
+db = get_database()
 
-# Ensure the database directory exists
-if not os.path.exists('database'):
-    os.makedirs('database')
-
-# Create a thread-local SQLite connection
-db_local = threading.local()
-
-
-def get_db_connection():
+# Reusable functions for accessing collections
+def get_workers_collection():
     """
-    Returns a thread-local SQLite connection.
+    Returns the workers collection.
     """
-    if not hasattr(db_local, "connection"):
-        db_local.connection = sqlite3.connect(DB_FILE, check_same_thread=False)
-    return db_local.connection
+    return db["workers"]
+
+def get_files_collection():
+    """
+    Returns the files collection.
+    """
+    return db["files"]
+
+def get_metadata_collection():
+    """
+    Returns the metadata collection.
+    """
+    return db["metadata"]
+
+# Utility to update worker information
+def update_worker(worker_id, url, status="active"):
+    """
+    Updates or inserts worker information in the workers collection.
+    """
+    workers = get_workers_collection()
+    workers.update_one(
+        {"worker_id": worker_id},
+        {"$set": {
+            "url": url,
+            "status": status,
+            "last_heartbeat": datetime.utcnow()
+        }},
+        upsert=True
+    )
+
+# Utility to get active workers
+def get_active_workers():
+    """
+    Retrieves all active workers.
+    """
+    workers = get_workers_collection()
+    return list(workers.find({"status": "active"}, {"_id": 0, "worker_id": 1, "url": 1}))
+
+# Utility to store file metadata
+def store_file_metadata(file_id, file_name, size, chunks):
+    files = get_files_collection()
+    print(file_id,"file_id")
+    files.insert_one({
+        "file_id": file_id,
+        "file_name": file_name,
+        "size": size,
+        "chunks": chunks,
+        "status": "active",
+        "created_at": datetime.utcnow()
+    })
+
+# Utility to fetch file metadata
+def fetch_file_metadata(file_id):
+    """
+    Fetches metadata for a file from the files collection.
+    """
+    files = get_files_collection()
+    return files.find_one({"file_id": file_id})
+
+# Utility to update leader metadata
+def update_leader_metadata(leader_id):
+    """
+    Updates leader information in the metadata collection.
+    """
+    metadata = get_metadata_collection()
+    metadata.update_one(
+        {"type": "leader"},
+        {"$set": {
+            "leader": leader_id,
+            "last_updated": datetime.utcnow()
+        }},
+        upsert=True
+    )
+
+# Utility to fetch leader metadata
+def fetch_leader_metadata():
+    """
+    Fetches leader information from the metadata collection.
+    """
+    metadata = get_metadata_collection()
+    return metadata.find_one({"type": "leader"})
 
 
-def init_db():
-    """
-    Initializes the SQLite database and creates required tables if they don't exist.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS files (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            chunks TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            updated_at TEXT,
-            deleted_at TEXT
-        )
-    ''')
-    conn.commit()
 
-
-def add_file_record(file_id, file_name, chunks_info):
+def mark_inactive_workers(timeout_seconds):
     """
-    Adds a new file record to the database.
+    Marks workers as inactive if they have not sent a heartbeat within the timeout period.
     """
-    chunks_json = json.dumps(chunks_info)
-    created_at = datetime.now().isoformat()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        INSERT INTO files (id, name, chunks, created_at)
-        VALUES (?, ?, ?, ?)
-    ''', (file_id, file_name, chunks_json, created_at))
-    conn.commit()
-
-def get_all_files_with_deleted():
-    """
-    Retrieve all files from the database, including soft-deleted ones.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT id, name, chunks, created_at, updated_at, deleted_at
-        FROM files
-    ''')
-    files = cursor.fetchall()
-    return [
+    workers = get_workers_collection()
+    timeout_threshold = datetime.utcnow() - timedelta(seconds=timeout_seconds)
+    result = workers.update_many(
         {
-            'id': row[0],
-            'name': row[1],
-            'chunks': json.loads(row[2]),
-            'created_at': row[3],
-            'updated_at': row[4],
-            'deleted_at': row[5]
-        }
-        for row in files
-    ]
-
-def get_all_files():
-    """
-    Retrieves all files from the database, excluding soft-deleted files.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT id, name, chunks, created_at, updated_at
-        FROM files
-        WHERE deleted_at IS NULL
-    ''')
-    files = cursor.fetchall()
-    return [
+            "last_heartbeat": {"$lt": timeout_threshold},
+            "status": "active"
+        },
         {
-            'id': row[0],
-            'name': row[1],
-            'chunks': json.loads(row[2]),
-            'created_at': row[3],
-            'updated_at': row[4]
+            "$set": {"status": "inactive"}
         }
-        for row in files
-    ]
-
-
-def get_file(file_id):
-    """
-    Retrieves a single file by its ID.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT id, name, chunks, created_at, updated_at
-        FROM files
-        WHERE id = ? AND deleted_at IS NULL
-    ''', (file_id,))
-    row = cursor.fetchone()
-
-    if row:
-        return {
-            'id': row[0],
-            'name': row[1],
-            'chunks': json.loads(row[2]),
-            'created_at': row[3],
-            'updated_at': row[4]
-        }
-    return None
-
-
-def soft_delete_file(file_id):
-    """
-    Marks a file as soft-deleted in the database.
-    """
-    deleted_at = datetime.now().isoformat()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        UPDATE files
-        SET deleted_at = ?
-        WHERE id = ?
-    ''', (deleted_at, file_id))
-    conn.commit()
-
-def delete_file(file_id):
-    """
-    Permanently deletes a file record from the database.
-    """
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        DELETE FROM files
-        WHERE id = ?
-    ''', (file_id,))
-    conn.commit()
+    )
+    return result.modified_count  # Number of workers marked as inactive

@@ -1,75 +1,34 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+    <!-- Meta tags and title -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Distributed File System</title>
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+
+    <!-- Custom CSS -->
     <style>
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 20px 0;
-            font-size: 18px;
-            text-align: left;
-        }
-
-        thead tr {
-            background-color: #f2f2f2;
-        }
-
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-        }
-
-        tbody tr:hover {
-            background-color: #f5f5f5;
-        }
-
         .deleted-row {
-            background-color: lightgray;
-            color: gray;
+            background-color: #f8f9fa;
+            color: #6c757d;
         }
 
-        .action-button {
-            padding: 8px 16px;
-            text-decoration: none;
-            color: white;
-            border-radius: 4px;
-            font-size: 14px;
-            cursor: pointer;
-            border: none;
+        .disabled-button {
+            pointer-events: none;
+            opacity: 0.65;
         }
 
-        .download-button {
-            background-color: #4CAF50; 
-        }
-
-        .download-button.disabled {
-            background-color: gray;
-            color: #ddd;
-            cursor: not-allowed;
-        }
-
-        .delete-button {
-            background-color: #f44336; 
-            margin-left: 10px; 
-        }
-
-        .delete-button.disabled {
-            background-color: gray;
-            color: #ddd;
-            cursor: not-allowed;
-        }
-
-        /* Styling for collapsible chunks */
         .chunk-container {
             margin-bottom: 10px;
         }
 
         .chunk-title {
             cursor: pointer;
-            color: #0e0f10;
+            color: #007bff;
         }
 
         .chunk-arrow {
@@ -80,7 +39,7 @@
 
         .chunk-content {
             display: none;
-            margin-left: 20px; 
+            margin-left: 20px;
             margin-top: 5px;
         }
 
@@ -94,96 +53,117 @@
             border-radius: 4px;
             font-size: 16px;
         }
-
-        .message.success {
-            background-color: #4CAF50;
-            color: white;
-        }
-
-        .message.error {
-            background-color: #f44336;
-            color: white;
-        }
     </style>
 </head>
-<body>
-    <h1>Distributed File System</h1>
 
-    {% if message %}
-        <div class="message {{ message.type }}">
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4 text-center">Distributed File System</h1>
+
+        {% if message %}
+        <div class="alert alert-{{ message.type }}" role="alert">
             {{ message.text }}
         </div>
-    {% endif %}
+        {% endif %}
 
-    <h2>Upload a File</h2>
-    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" required>
-        <button type="submit">Upload</button>
-    </form>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h2>Upload a File</h2>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('create_file') }}" method="post" enctype="multipart/form-data" class="d-flex">
+                    <input type="file" name="file" class="form-control me-2" required>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
 
-    <h2>Uploaded Files</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>Index</th>
-                <th>File Name</th>
-                <th>Upload Date</th>
-                <th>Chunks</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for file in files %}
-                <tr class="{{ 'deleted-row' if file.deleted_at else '' }}">
-                    <td>{{ loop.index }}</td>
-                    <td>{{ file.name }}</td>
+        <h2 class="mb-3">Uploaded Files</h2>
+        <table class="table table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">File Name</th>
+                    <th scope="col">Upload Date</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Chunks</th>
+                    <th scope="col">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in files %}
+                <tr class="{{ 'deleted-row' if file.status == 'deleted' else '' }}">
+                    <th scope="row">{{ loop.index }}</th>
+                    <td>{{ file.file_name }}</td>
                     <td>{{ file.created_at }}</td>
                     <td>
+                        {% if file.status == 'deleted' %}
+                        <span class="text-danger">Deleted on {{ file.deleted_at }}</span>
+                        {% else %}
+                        <span class="text-success">Active</span>
+                        {% endif %}
+                    </td>
+                    <td>
                         {% for chunk in file.chunks %}
-                            <div class="chunk-container">
-                                <span class="chunk-title" onclick="toggleChunk(this)">
-                                    Chunk {{ loop.index }}
-                                    <span class="chunk-arrow">▼</span>
-                                </span>
-                                <div class="chunk-content">
+                        <div class="chunk-container">
+                            <span class="chunk-title" onclick="toggleChunk(this)">
+                                Chunk {{ loop.index }}
+                                <span class="chunk-arrow">▼</span>
+                            </span>
+                            <div class="chunk-content">
+                                <ul class="list-unstyled">
                                     {% for worker_id in chunk.worker_ids %}
-                                        <div>Worker: {{ worker_id }}</div>
+                                    <li>Worker: {{ worker_id }}</li>
                                     {% endfor %}
-                                </div>
+                                </ul>
                             </div>
+                        </div>
                         {% endfor %}
                     </td>
                     <td>
-                        <a href="{{ url_for('download_file', file_id=file.id) }}" 
-                           class="action-button download-button {{ 'disabled' if file.deleted_at else '' }}"
-                           {% if file.deleted_at %} onclick="return false;" {% endif %}>
-                           Download
+                        <a href="{{ url_for('download_file', file_id=file.file_id) }}"
+                            class="btn btn-success btn-sm mb-1 {{ 'disabled-button' if file.status == 'deleted' else '' }}"
+                            {% if file.status=='deleted' %} tabindex="-1" aria-disabled="true" {% endif %}>
+                            Download
                         </a>
-                        <form action="{{ url_for('delete_file_post', file_id=file.id) }}" method="post" style="display:inline;">
-                            <button type="submit" 
-                                    class="action-button delete-button {{ 'disabled' if file.deleted_at else '' }}"
-                                    {% if file.deleted_at %} disabled {% endif %}>
+                        <form action="{{ url_for('delete_file_post', file_id=file.file_id) }}" method="post"
+                            style="display:inline;">
+                            <button type="submit"
+                                class="btn btn-danger btn-sm {{ 'disabled-button' if file.status == 'deleted' else '' }}"
+                                {% if file.status=='deleted' %} disabled {% endif %}>
                                 Delete
                             </button>
                         </form>
                     </td>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 
+    <!-- Bootstrap JS (Optional for some components) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Custom JS -->
     <script>
         function toggleChunk(element) {
-            const content = element.nextElementSibling; 
+            const content = element.nextElementSibling;
             const arrow = element.querySelector('.chunk-arrow');
             if (content.classList.contains('visible')) {
                 content.classList.remove('visible');
-                arrow.textContent = '▼'; 
+                arrow.textContent = '▼';
             } else {
                 content.classList.add('visible');
-                arrow.textContent = '▲'; 
+                arrow.textContent = '▲';
             }
         }
+
+        // Initialize tooltips (optional, if using tooltips)
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl)
+        })
     </script>
 </body>
+
 </html>
