@@ -118,6 +118,28 @@ def get_file(file_id):
     log_api_call('READ', file_id, file_info)
     return jsonify(file_info), 200
 
+@app.route('/files/<file_id>/delete', methods=['POST'])
+def delete_file_post(file_id):
+    """
+    Soft delete a file and update the UI accordingly.
+    """
+    file_info = db_operations.get_file(file_id)
+    if not file_info:
+        return jsonify({'error': 'File not found'}), 404
+
+    # Soft delete the file in the database
+    db_operations.soft_delete_file(file_id)
+
+    # Notify workers to remove the actual file chunks
+    for chunk in file_info['chunks']:
+        for worker_id in chunk['worker_ids']:
+            chunk_path = os.path.join(WORKER_STORAGE_PATHS[worker_id], chunk['chunk_id'])
+            if os.path.exists(chunk_path):
+                os.remove(chunk_path)
+
+    # Redirect back to the index page
+    return redirect(url_for('index'))
+
 # Delete API: Mark file as soft deleted and remove chunks
 @app.route('/files/<file_id>', methods=['DELETE'])
 def delete_file(file_id):
@@ -127,7 +149,6 @@ def delete_file(file_id):
 
     # Mark the file as soft-deleted in SQLite
     db_operations.soft_delete_file(file_id)
-    
 
     for chunk in file_info['chunks']:
         chunk_id = chunk['chunk_id']
@@ -154,6 +175,9 @@ def delete_file(file_id):
     except requests.exceptions.RequestException as e:
         return jsonify({'error': f'Master node communication failed: {str(e)}'}), 500
 
+    # Remove the file record from the database
+    db_operations.delete_file(file_id)
+
     # Log the delete action
     log_api_call('DELETE', file_id, file_info)
 
@@ -172,7 +196,7 @@ def worker_heartbeat(worker_id):
 @app.route('/')
 def index():
     # Get the list of all uploaded files from the database
-    files = db_operations.get_all_files()
+    files = db_operations.get_all_files_with_deleted()
     return render_template('index.html', files=files)
 
 # Route to handle file upload through the UI

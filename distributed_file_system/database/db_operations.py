@@ -58,6 +58,29 @@ def add_file_record(file_id, file_name, chunks_info):
     ''', (file_id, file_name, chunks_json, created_at))
     conn.commit()
 
+def get_all_files_with_deleted():
+    """
+    Retrieve all files from the database, including soft-deleted ones.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT id, name, chunks, created_at, updated_at, deleted_at
+        FROM files
+    ''')
+    files = cursor.fetchall()
+    return [
+        {
+            'id': row[0],
+            'name': row[1],
+            'chunks': json.loads(row[2]),
+            'created_at': row[3],
+            'updated_at': row[4],
+            'deleted_at': row[5]
+        }
+        for row in files
+    ]
 
 def get_all_files():
     """
@@ -122,4 +145,17 @@ def soft_delete_file(file_id):
         SET deleted_at = ?
         WHERE id = ?
     ''', (deleted_at, file_id))
+    conn.commit()
+
+def delete_file(file_id):
+    """
+    Permanently deletes a file record from the database.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        DELETE FROM files
+        WHERE id = ?
+    ''', (file_id,))
     conn.commit()

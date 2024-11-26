@@ -107,6 +107,14 @@ def retrieve_chunk(chunk_id):
         print(f"ERROR: Failed to send chunk {chunk_id} from path {chunk_path}: {e}")
         return jsonify({'error': f'Failed to retrieve chunk {chunk_id}'}), 500
 
+@app.route('/chunks/<chunk_id>/delete', methods=['POST'])
+def delete_chunk(chunk_id):
+    chunk_path = os.path.join(STORAGE_DIR, chunk_id)
+    if os.path.exists(chunk_path):
+        os.remove(chunk_path)
+        return jsonify({'message': f'Chunk {chunk_id} deleted successfully'}), 200
+    return jsonify({'error': f'Chunk {chunk_id} not found'}), 404
+
 if __name__ == '__main__':
     # Start Heartbeat Thread
     threading.Thread(target=send_heartbeat, daemon=True).start()

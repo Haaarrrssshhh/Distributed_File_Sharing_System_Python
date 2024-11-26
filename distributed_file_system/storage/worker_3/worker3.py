@@ -18,6 +18,14 @@ LEADER_CHECK_INTERVAL = 30  # How often to check for the leader (in seconds)
 # Ensure storage directory exists
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
+@app.route('/chunks/<chunk_id>/delete', methods=['POST'])
+def delete_chunk(chunk_id):
+    chunk_path = os.path.join(STORAGE_DIR, chunk_id)
+    if os.path.exists(chunk_path):
+        os.remove(chunk_path)
+        return jsonify({'message': f'Chunk {chunk_id} deleted successfully'}), 200
+    return jsonify({'error': f'Chunk {chunk_id} not found'}), 404
+
 def get_current_leader():
     """
     This function queries the Master Nodes to get the current leader's port.
