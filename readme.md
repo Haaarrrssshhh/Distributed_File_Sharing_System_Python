@@ -82,7 +82,10 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 
 1. **Start the Master Node**:
 ```bash
-    python3 distributed_file_system/api_gateway/gateway.py
+    python3 -m api_gateway.gateway
+    python3 -m master_node.master master_1
+    python3 -m master_node.master master_2
+    python3 -m master_node.master master_3
     python3 distributed_file_system/storage/worker_1/worker1.py
     python3 distributed_file_system/storage/worker_2/worker2.py
     python3 distributed_file_system/storage/worker_3/worker3.py
