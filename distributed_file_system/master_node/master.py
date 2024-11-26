@@ -383,11 +383,14 @@ def sync_metadata():
 @app.route('/all_metadata', methods=['GET'])
 def get_all_metadata():
     """
-    Return all metadata entries.
+    Return all metadata entries, including soft-deleted files.
     """
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute('SELECT file_id, file_name, chunks, created_at, updated_at FROM metadata')
+    cursor.execute('''
+        SELECT file_id, file_name, chunks, created_at, updated_at, deleted_at
+        FROM metadata
+    ''')
     rows = cursor.fetchall()
     conn.close()
 
@@ -398,7 +401,8 @@ def get_all_metadata():
             'file_name': row[1],
             'chunks': json.loads(row[2]),
             'created_at': row[3],
-            'updated_at': row[4]
+            'updated_at': row[4],
+            'deleted_at': row[5]
         })
     return jsonify({'metadata': metadata}), 200
 

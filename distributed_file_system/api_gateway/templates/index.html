@@ -4,9 +4,116 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Distributed File System</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 18px;
+            text-align: left;
+        }
+
+        thead tr {
+            background-color: #f2f2f2;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .deleted-row {
+            background-color: lightgray;
+            color: gray;
+        }
+
+        .action-button {
+            padding: 8px 16px;
+            text-decoration: none;
+            color: white;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+        }
+
+        .download-button {
+            background-color: #4CAF50; 
+        }
+
+        .download-button.disabled {
+            background-color: gray;
+            color: #ddd;
+            cursor: not-allowed;
+        }
+
+        .delete-button {
+            background-color: #f44336; 
+            margin-left: 10px; 
+        }
+
+        .delete-button.disabled {
+            background-color: gray;
+            color: #ddd;
+            cursor: not-allowed;
+        }
+
+        /* Styling for collapsible chunks */
+        .chunk-container {
+            margin-bottom: 10px;
+        }
+
+        .chunk-title {
+            cursor: pointer;
+            color: #0e0f10;
+        }
+
+        .chunk-arrow {
+            margin-left: 5px;
+            font-size: 12px;
+            vertical-align: middle;
+        }
+
+        .chunk-content {
+            display: none;
+            margin-left: 20px; 
+            margin-top: 5px;
+        }
+
+        .chunk-content.visible {
+            display: block;
+        }
+
+        .message {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+
+        .message.success {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .message.error {
+            background-color: #f44336;
+            color: white;
+        }
+    </style>
 </head>
 <body>
     <h1>Distributed File System</h1>
+
+    {% if message %}
+        <div class="message {{ message.type }}">
+            {{ message.text }}
+        </div>
+    {% endif %}
 
     <h2>Upload a File</h2>
     <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
@@ -15,13 +122,68 @@
     </form>
 
     <h2>Uploaded Files</h2>
-    <ul>
-        {% for file in files %}
-            <li>
-                {{ file.name }} - 
-                <a href="{{ url_for('download_file', file_id=file.id) }}">Download</a>
-            </li>
-        {% endfor %}
-    </ul>
+    <table>
+        <thead>
+            <tr>
+                <th>Index</th>
+                <th>File Name</th>
+                <th>Upload Date</th>
+                <th>Chunks</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in files %}
+                <tr class="{{ 'deleted-row' if file.deleted_at else '' }}">
+                    <td>{{ loop.index }}</td>
+                    <td>{{ file.name }}</td>
+                    <td>{{ file.created_at }}</td>
+                    <td>
+                        {% for chunk in file.chunks %}
+                            <div class="chunk-container">
+                                <span class="chunk-title" onclick="toggleChunk(this)">
+                                    Chunk {{ loop.index }}
+                                    <span class="chunk-arrow">▼</span>
+                                </span>
+                                <div class="chunk-content">
+                                    {% for worker_id in chunk.worker_ids %}
+                                        <div>Worker: {{ worker_id }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('download_file', file_id=file.id) }}" 
+                           class="action-button download-button {{ 'disabled' if file.deleted_at else '' }}"
+                           {% if file.deleted_at %} onclick="return false;" {% endif %}>
+                           Download
+                        </a>
+                        <form action="{{ url_for('delete_file_post', file_id=file.id) }}" method="post" style="display:inline;">
+                            <button type="submit" 
+                                    class="action-button delete-button {{ 'disabled' if file.deleted_at else '' }}"
+                                    {% if file.deleted_at %} disabled {% endif %}>
+                                Delete
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        function toggleChunk(element) {
+            const content = element.nextElementSibling; 
+            const arrow = element.querySelector('.chunk-arrow');
+            if (content.classList.contains('visible')) {
+                content.classList.remove('visible');
+                arrow.textContent = '▼'; 
+            } else {
+                content.classList.add('visible');
+                arrow.textContent = '▲'; 
+            }
+        }
+    </script>
 </body>
 </html>
