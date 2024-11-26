@@ -220,23 +220,22 @@ def download_file(file_id):
             for chunk in file_metadata['chunks']:
                 chunk_id = chunk['chunk_id']
 
-            # Query master node for worker URL
-            try:
-                worker_response = requests.get(f"{leader_url}/chunks/{file_id}/{chunk_id}")
-                worker_response.raise_for_status()
-                worker_url = worker_response.json().get('worker_url')
-                if not worker_url:
-                    return jsonify({'error': f'No active worker for chunk {chunk_id}'}), 500
+                # Query master node for worker URL
+                try:
+                    worker_response = requests.get(f"{leader_url}/chunks/{file_id}/{chunk_id}")
+                    worker_response.raise_for_status()
+                    worker_url = worker_response.json().get('worker_url')
+                    if not worker_url:
+                        return jsonify({'error': f'No active worker for chunk {chunk_id}'}), 500
 
-                # Fetch chunk data from worker
-                chunk_response = requests.get(worker_url)
-                chunk_response.raise_for_status()
-                output_file.write(chunk_response.content)
-            except requests.exceptions.RequestException as e:
-                return jsonify({'error': f'Failed to retrieve chunk {chunk_id}: {str(e)}'}), 500
+                    # Fetch chunk data from worker
+                    chunk_response = requests.get(worker_url)
+                    chunk_response.raise_for_status()
+                    output_file.write(chunk_response.content)
+                except requests.exceptions.RequestException as e:
+                    return jsonify({'error': f'Failed to retrieve chunk {chunk_id}: {str(e)}'}), 500
     except Exception as e:
         return jsonify({'error': f'Failed to reconstruct file: {str(e)}'}), 500
-
 
     return send_file(output_file_path, as_attachment=True, download_name=file_metadata['name'])
 
