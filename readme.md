@@ -93,3 +93,26 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
     python3 distributed_file_system/storage/worker_5/worker5.py
 ```
 
+### Run all dfs components together
+
+```bash
+  1. Navigate to Project Path:  /Distributed_File_System_Python/distributed_file_system
+  2. Update the Project Path in the Scripts: The location where you cloned or stored the project
+
+    Windows: Open the "run_all_win.bat" file and update the project path:
+      cd /d C:\path\to\your\project\Distributed_File_System_Python\distributed_file_system\
+
+    macOS/Linux: Open the "run_all_mac_or_linux.sh" file and update the project path:
+      cd "/path/to/your/project/Distributed_File_System_Python/distributed_file_system" || exit
+
+
+  3. Execution Instructions
+    Windows: 
+      Navigate to the directory containing run_all_win.bat.
+      Run in Command Prompt: ".\run_all_win.bat" or "run_all_win.bat"
+
+    For macOS/Linux:
+      Navigate to the directory containing "run_all_mac_or_linux.sh".
+      Make the run_all.sh executable: " chmod +x run_all_mac_or_linux.sh"
+      Run the script using the  command: "./run_all_mac_or_linux.sh "
+```
