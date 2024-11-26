@@ -3,7 +3,10 @@ import os
 import requests
 from datetime import datetime
 import hashlib
-import uuid
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 from database.db_operations import (
     get_active_workers,
@@ -17,26 +20,30 @@ app = Flask(__name__)
 # Initialize the database
 db = get_database()
 
-# Master Node URLs
+# Master Node URLs with IP addresses
 MASTER_NODES = {
-    "master_1": 5001,
-    "master_2": 5101,
-    "master_3": 5201,
+    "master_1": {"ip": os.getenv("MASTER_1_IP"), "port": os.getenv("MASTER_1_PORT")},
+    "master_2": {"ip": os.getenv("MASTER_2_IP"), "port":  os.getenv("MASTER_2_PORT")},
+    "master_3": {"ip": os.getenv("MASTER_3_IP"), "port": os.getenv("MASTER_3_PORT")},
 }
 
 def get_current_leader_url():
-    for master, port in MASTER_NODES.items():
+    for master, info in MASTER_NODES.items():
+        ip = info["ip"]
+        port = info["port"]
         try:
-            print(f"Querying {master} at port {port} for leader...")
-            response = requests.get(f"http://127.0.0.1:{port}/current_leader", timeout=2)
+            print(f"Querying {master} at {ip}:{port} for leader...")
+            response = requests.get(f"http://{ip}:{port}/current_leader", timeout=2)
             if response.status_code == 200:
                 leader = response.json().get("leader")
                 print(f"Leader discovered from {master}: {leader}")
                 if leader:
-                    leader_port = MASTER_NODES.get(leader)
-                    if leader_port:
-                        print(f"Returning leader URL: http://127.0.0.1:{leader_port}")
-                        return f"http://127.0.0.1:{leader_port}"
+                    leader_info = MASTER_NODES.get(leader)
+                    if leader_info:
+                        leader_ip = leader_info["ip"]
+                        leader_port = leader_info["port"]
+                        print(f"Returning leader URL: http://{leader_ip}:{leader_port}")
+                        return f"http://{leader_ip}:{leader_port}"
         except requests.exceptions.RequestException as e:
             print(f"Error querying {master}: {e}")
 
@@ -107,7 +114,6 @@ def download_file(file_id):
     output_file_path = os.path.join(output_dir, f"{file_metadata['file_name']}")
 
     try:
-        leader_url = get_current_leader_url()
         with open(output_file_path, 'wb') as output_file:
             for chunk in file_metadata['chunks']:
                 chunk_id = chunk['chunk_id']
@@ -154,7 +160,7 @@ def index():
             'created_at': file_doc.get('created_at').strftime("%Y-%m-%d %H:%M:%S") if file_doc.get('created_at') else '',
             'chunks': file_doc.get('chunks', []),
             'status': file_doc.get('status', 'active'),  # Default to 'active' if not set
-            'deleted_at': file_doc.get('deleted_at')
+            'deleted_at': file_doc.get('deleted_at').strftime("%Y-%m-%d %H:%M:%S") if file_doc.get('deleted_at') else ''
         }
         files.append(file)
     return render_template('index.html', files=files)
@@ -173,4 +179,4 @@ def worker_heartbeat(worker_id):
     return jsonify({'message': f'Heartbeat received from {worker_id}'}), 200
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, host='0.0.0.0')

@@ -3,21 +3,28 @@ import os
 import requests
 import threading
 import time
+import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 app = Flask(__name__)
 
 # Worker Configuration
 WORKER_ID = "worker_1"  # Change this for each worker instance
-PORT = 5002  # Change this for each worker instance
+PORT = os.getenv("WORKER_1_PORT")  # Change this for each worker instance
 STORAGE_DIR = os.path.abspath(f"storage/{WORKER_ID}")
 
+# Get Worker IP - For local testing, set WORKER_IP to '127.0.0.1'
+WORKER_IP = os.getenv("WORKER_1_IP")
+
 # Master Node Configuration
-MASTER_NODES = {
-    "master_1": 5001,
-    "master_2": 5101,
-    "master_3": 5201
-}
+CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'config.json')
+with open(CONFIG_FILE, "r") as file:
+    MASTER_NODES = json.load(file)
+
 HEARTBEAT_INTERVAL = 5  # In seconds
 LEADER_CHECK_INTERVAL = 10  # In seconds
 MASTER_NODE_URL = ""  # This will be dynamically updated
@@ -25,29 +32,30 @@ MASTER_NODE_URL = ""  # This will be dynamically updated
 # Ensure storage directory exists
 os.makedirs(STORAGE_DIR, exist_ok=True)
 
-def get_master_port(master_id):
-    """
-    Helper function to map master node ID to its port.
-    """
-    return MASTER_NODES.get(master_id)
-
 def get_current_leader():
     """
     Queries the master nodes to get the current leader's URL.
     """
     global MASTER_NODE_URL
 
-    for master_id, port in MASTER_NODES.items():
+    for master_id, master_info in MASTER_NODES.items():
+        master_ip = master_info['ip']
+        master_port = master_info['port']
+        print(f"Querying {master_id} at {master_ip}:{master_port} for leader...")
         try:
-            response = requests.get(f"http://127.0.0.1:{port}/current_leader", timeout=2)
+            response = requests.get(f"http://{master_ip}:{master_port}/current_leader", timeout=2)
             if response.status_code == 200:
                 leader_id = response.json().get('leader')
                 if leader_id:
-                    leader_port = get_master_port(leader_id)
-                    if leader_port:
-                        MASTER_NODE_URL = f"http://127.0.0.1:{leader_port}"
+                    leader_info = MASTER_NODES.get(leader_id)
+                    if leader_info:
+                        leader_ip = leader_info['ip']
+                        leader_port = leader_info['port']
+                        MASTER_NODE_URL = f"http://{leader_ip}:{leader_port}"
                         print(f"Current leader is: {leader_id}")
                         return MASTER_NODE_URL
+                    else:
+                        print(f"Leader {leader_id} not found in MASTER_NODES")
         except requests.exceptions.RequestException as e:
             print(f"Error querying {master_id}: {e}")
 
@@ -64,8 +72,9 @@ def send_heartbeat():
             try:
                 # Send heartbeat with worker ID and URL
                 heartbeat_data = {
-                    'url': f"http://127.0.0.1:{PORT}"
+                    'url': f"http://{WORKER_IP}:{PORT}"
                 }
+
                 response = requests.post(f"{leader_url}/heartbeat/{WORKER_ID}", json=heartbeat_data, timeout=2)
                 if response.status_code == 200:
                     print(f"[{datetime.now()}] Heartbeat sent successfully to {leader_url}")
@@ -143,4 +152,4 @@ if __name__ == '__main__':
     # Start Heartbeat and Leader Check Threads
     threading.Thread(target=leader_check, daemon=True).start()
     threading.Thread(target=send_heartbeat, daemon=True).start()
-    app.run(debug=True, port=PORT)
+    app.run(debug=True, port=PORT, host='0.0.0.0')

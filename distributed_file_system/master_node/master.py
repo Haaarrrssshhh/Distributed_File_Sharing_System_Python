@@ -37,8 +37,10 @@ if MASTER_NODE_ID not in config:
     print(f"Error: {MASTER_NODE_ID} not found in config.json")
     sys.exit(1)
 
+IP = config[MASTER_NODE_ID]["ip"]
 PORT = config[MASTER_NODE_ID]["port"]
 BACKUP_MASTERS = [node for node in config.keys() if node != MASTER_NODE_ID]  # Exclude self
+
 HEARTBEAT_INTERVAL = 5  # Seconds to check if current leader is alive
 LEADER_CHECK_INTERVAL = 10  # How often to sync the leader from MongoDB
 HEARTBEAT_TIMEOUT = 15  # Workers are considered inactive if no heartbeat for 15 seconds
@@ -59,10 +61,11 @@ def announce_leader():
 
     # Notify all other masters
     for node in BACKUP_MASTERS:
+        node_ip = config[node]["ip"]
         node_port = config[node]["port"]
         try:
             response = requests.post(
-                f"http://127.0.0.1:{node_port}/leader",
+                f"http://{node_ip}:{node_port}/leader",
                 json={'leader': current_leader},
                 timeout=2
             )
@@ -100,9 +103,10 @@ def start_election():
     # Send election message to all higher-priority nodes
     higher_nodes_alive = []
     for node in higher_nodes:
+        node_ip = config[node]["ip"]
         node_port = config[node]["port"]
         try:
-            response = requests.get(f"http://127.0.0.1:{node_port}/alive", timeout=2)
+            response = requests.get(f"http://{node_ip}:{node_port}/alive", timeout=2)
             if response.status_code == 200:
                 higher_nodes_alive.append(node)
         except requests.exceptions.RequestException:
@@ -145,11 +149,11 @@ def discover_leader():
         print(f"{MASTER_NODE_ID}: No leader found in MongoDB.")
         start_election()
 
-def get_leader_port(leader):
-    """
-    Helper function to map leader node to a port.
-    """
-    return config.get(leader, {}).get("port", 5001)  # Default to 5001 if leader is not found
+def get_leader_address(leader):
+    leader_config = config.get(leader, {})
+    ip = leader_config.get("ip", "127.0.0.1")  # Default to 127.0.0.1 if leader is not found
+    port = leader_config.get("port", 5001)  # Default to 5001 if leader is not found
+    return ip, port
 
 @app.route('/current_leader', methods=['GET'])
 def current_leader_endpoint():
@@ -165,9 +169,9 @@ def is_leader_alive(leader_id):
     """
     if leader_id == MASTER_NODE_ID:
         return True  # We are the leader
-    leader_port = get_leader_port(leader_id)
+    leader_ip, leader_port = get_leader_address(leader_id)
     try:
-        response = requests.get(f"http://127.0.0.1:{leader_port}/alive", timeout=2)
+        response = requests.get(f"http://{leader_ip}:{leader_port}/alive", timeout=2)
         return response.status_code == 200
     except requests.exceptions.RequestException:
         return False
@@ -211,7 +215,7 @@ def upload_file():
     file_data = file.read()
     file_size = len(file_data)
     file_id = str(uuid.uuid4())
-    print(file_id,"file_isssssd")
+    print(file_id, "file_isssssd")
     # Divide file into chunks and assign to workers
     try:
         chunks_info = divide_file_into_chunks(file_data, file_id)
@@ -291,7 +295,7 @@ def delete_file(file_id):
             else:
                 print(f"Worker {worker_id} is not active.")
 
-    # Remove file metadata
+    # Soft delete the file metadata
     files_collection = db["files"]
     files_collection.update_one(
         {"file_id": file_id},
@@ -338,7 +342,6 @@ def worker_heartbeat(worker_id):
     update_worker(worker_id, worker_url)
     return jsonify({'message': f'Heartbeat received from {worker_id}'}), 200
 
-
 def check_inactive_workers():
     """
     Periodically checks for inactive workers and updates their status.
@@ -353,4 +356,4 @@ if __name__ == '__main__':
     discover_leader()  # Discover leader and synchronize metadata on startup
     threading.Thread(target=check_leader_alive, daemon=True).start()  # Check leader periodically
     threading.Thread(target=check_inactive_workers, daemon=True).start()  # Check workers periodically
-    app.run(debug=True, port=PORT, use_reloader=False)
+    app.run(debug=True, port=PORT, host='0.0.0.0', use_reloader=False)
