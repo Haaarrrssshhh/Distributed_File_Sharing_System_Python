@@ -29,7 +29,7 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 ### API Gateway
 - **Role**: Acts as the entry point for the UI, handling user requests for uploading and downloading files. It communicates with the master nodes to manage file chunk distribution and retrieval.
 - **Functionality**:
-  - Divides large files into chunks (default size: 4 MB).
+  - Divides large files into chunks (default size: 128 MB).
   - Distributes chunks across worker nodes.
 
 ### Master Node
@@ -44,6 +44,12 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
   - Stores file chunks in local storage.
   - Responds to chunk retrieval and deletion requests.
 
+### Storage Layer
+- **Role**: Manages the physical storage of file chunks on worker nodes.
+- **Functionality**:
+  - Each worker node has its own storage directory for file chunks.
+  - Chunks are replicated across multiple workers for fault tolerance.
+
 ---
 
 ## Installation
@@ -51,7 +57,7 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 ### Prerequisites
 - **Python**: Version 3.8+
 - **`pip`**: Python package manager
-- **SQLite**: Comes pre-installed with Python
+- **MongoDB**: Installed and running
 
 ### Setup
 
@@ -74,6 +80,7 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 
 4. **Initialize the Database**:
     - Ensure the `databases/` folder is created.
+    - The system will automatically create `dfs_metadata.db` and `master_metadata.db` on startup.
 
 5. **Update `config.json`**:
     - Ensure the `config.json` file contains the ports and IP addresses for all master nodes and worker nodes.
@@ -94,7 +101,6 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
         }
     }
     ```
-  6. **Create .env file to store all your variables.**
 
 ---
 
@@ -368,7 +374,7 @@ Deploying the Distributed File System (DFS) on AWS EC2 involves setting up the n
 
 1. **Launch a Bastion Host Instance** in the `DFS_Public_Subnet`:
    - **Name:** `DFS_Bastion`
-   - **AMI:** Ubuntu Server 22.04 LTS
+   - **AMI:** Ubuntu Server 20.04 LTS
    - **Instance Type:** `t2.micro`
    - **Network:** `DFS_VPC`
    - **Subnet:** `DFS_Public_Subnet`
@@ -411,7 +417,7 @@ Deploying the Distributed File System (DFS) on AWS EC2 involves setting up the n
     ```
     - **Example**:
         ```bash
-        curl http://10.0.1.26:5003/health
+        curl http://YOUR_WORKER_IP:5003/health
         ```
     - **Expected Response**:
         ```json
@@ -424,7 +430,7 @@ Deploying the Distributed File System (DFS) on AWS EC2 involves setting up the n
     ```
     - **Example**:
         ```bash
-        telnet 10.0.1.26 5003
+        telnet YOUR_WORKER_IP 5003
         ```
     - **Expected Outcome**: Successful connection if the service is running and accessible.
 
@@ -436,7 +442,69 @@ Deploying the Distributed File System (DFS) on AWS EC2 involves setting up the n
 - **Inspect OS-Level Firewalls**: Adjust or disable firewalls temporarily for testing.
 - **Review Application Logs**: Look for errors or exceptions in `worker.log`, `master.log`, or `gateway.log`.
 
+---
+
+## Implemented Algorithms
+
+The DFS system leverages several key algorithms to ensure robust performance, fault tolerance, and efficient resource management. Below is an overview of the implemented algorithms:
+
+### **Leader Election: Bully Algorithm**
+- **Description**: Implements the Bully Algorithm among master nodes to ensure that a single leader is elected based on priority (typically the highest ID).
+- **Functionality**:
+  - If the current leader fails, the algorithm initiates an election process.
+  - A master node with a higher priority than the current leader can take over as the new leader.
+  - Ensures dynamic leader discovery and minimizes the risk of multiple leaders.
+
+### **Heartbeat Monitoring: Gossip Protocol**
+- **Description**: Utilizes a Gossip Protocol for monitoring the availability of worker nodes.
+- **Functionality**:
+  - Worker nodes send periodic heartbeats to the leader master node to indicate their active status.
+  - If a worker fails to send a heartbeat within a specified timeout, it is marked as inactive in MongoDB.
+  - Helps in detecting failures and maintaining an updated status of worker nodes.
+
+### **File Management and Chunk Replication**
+- **Description**: Ensures efficient storage and fault tolerance through chunk replication.
+- **Functionality**:
+  - **Upload**:
+    - Files are divided into chunks (default size: 4MB).
+    - Each chunk is replicated across multiple active workers (default replication factor: 3).
+    - Metadata (e.g., chunk IDs, worker assignments) is stored in MongoDB.
+  - **Download**:
+    - The gateway retrieves all chunks from assigned workers and reconstructs the original file.
+    - In case of worker failure, alternate replicas are fetched from other workers.
+  - **Delete**:
+    - Supports soft deletion by marking files as inactive in MongoDB.
+    - Deletes chunks from assigned workers to free up storage.
+
+### **Fault Tolerance and Recovery**
+- **Description**: Maintains system reliability and data integrity in the face of failures.
+- **Functionality**:
+  - **Replication**: File chunks are replicated across multiple workers to prevent data loss.
+  - **Leader Failure Handling**: If the leader master node fails, the Bully Algorithm ensures a new leader is elected promptly.
+  - **Dynamic Leader Discovery**: Worker nodes and the gateway dynamically query master nodes to discover the current leader, ensuring seamless operations even during leader transitions.
+
+### **Resource Allocation and Discovery**
+- **Description**: Efficiently assigns resources and discovers system components dynamically.
+- **Functionality**:
+  - **Resource Allocation**: Uses a resource allocation algorithm during file uploads to assign chunks to active workers, ensuring an even distribution and preventing worker overload.
+  - **Resource Discovery**: Worker nodes and the API gateway dynamically query master nodes to discover the current leader and active workers, facilitating efficient communication and operations.
+
+### **Multicast Through Leader Announcement**
+- **Description**: Keeps the entire cluster synchronized with the current leader’s identity.
+- **Functionality**:
+  - After a leader is elected, it broadcasts its status to all other master nodes.
+  - Ensures that all components of the system are aware of the current leader, maintaining coordination and consistency.
 
 ---
 
+## Contributing
 
+Contributions are welcome! Please fork the repository and submit a pull request for any enhancements or bug fixes.
+
+---
+
+## Contact
+
+For any questions or support, please contact [Harsh Zota](mailto:hzota1042@gmail.com).
+
+---
