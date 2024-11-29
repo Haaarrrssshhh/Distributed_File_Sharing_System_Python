@@ -7,7 +7,7 @@ A distributed file system (DFS) designed for efficient storage, retrieval, and m
 
 ## Demo
 
-Check out our [Demo Video](./videos/demo.mov) to see the Distributed File System in action!
+Check out our [Demo Video](./videos/demo.mp4) to see the Distributed File System in action!
 
 ---
 
